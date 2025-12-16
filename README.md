@@ -26,7 +26,7 @@ cd gh-yule-log
 gh extension install .
 ```
 
-Or from GitHub (once this repo is pushed, replace the owner as needed):
+Or from GitHub:
 
 ```bash
 gh extension install leereilly/gh-yule-log
