@@ -30,9 +30,12 @@ func parseGitLogToTicker(logOutput string) (string, string, bool) {
 		message := subject
 		meta := "by " + author + " " + relTime
 		// Fixed card width so message/meta line up as columns.
-		segmentWidth := len(message)
-		if l := len(meta); l > segmentWidth {
-			segmentWidth = l
+		// Use rune counts so multi-byte characters don't break alignment.
+		msgRunes := []rune(message)
+		metaRunes := []rune(meta)
+		segmentWidth := len(msgRunes)
+		if len(metaRunes) > segmentWidth {
+			segmentWidth = len(metaRunes)
 		}
 		segmentWidth += 4
 		msgSegs = append(msgSegs, padRight(message, segmentWidth))
@@ -45,10 +48,11 @@ func parseGitLogToTicker(logOutput string) (string, string, bool) {
 }
 
 func padRight(s string, n int) string {
-	if len(s) >= n {
+	rs := []rune(s)
+	if len(rs) >= n {
 		return s
 	}
-	return s + strings.Repeat(" ", n-len(s))
+	return s + strings.Repeat(" ", n-len(rs))
 }
 
 // buildGitTickerText runs git log and returns the scrolling texts.
