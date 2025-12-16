@@ -1,14 +1,22 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# GitHub CLI extension entrypoint for `gh yule-log`
-# This just runs the curses-based fire animation in fire.py.
+# GitHub CLI extension entrypoint for `gh yule-log`.
+# Runs the Go implementation (no Python required).
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-if ! command -v python3 >/dev/null 2>&1; then
-	echo "python3 is required to run gh-yule-log" >&2
+# If a pre-built binary is present, prefer that.
+if [ -x "${SCRIPT_DIR}/yule-log-go" ]; then
+	exec "${SCRIPT_DIR}/yule-log-go" "$@"
+fi
+
+# Otherwise, run the Go program directly from source from within
+# the module directory so Go can see go.mod correctly.
+if ! command -v go >/dev/null 2>&1; then
+	echo "go (Go toolchain) is required to run gh-yule-log" >&2
 	exit 1
 fi
 
-exec python3 "${SCRIPT_DIR}/fire.py" "$@"
+cd "${SCRIPT_DIR}"
+exec go run . "$@"
