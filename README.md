@@ -13,23 +13,20 @@ Vibe-coded with GitHub Copilot Agent and GPT-5.1 the week before Christmas 2025.
 ## Requirements
 
 - `gh` (GitHub CLI) installed and configured
-- Go toolchain (Go 1.21+) installed
 - A modern terminal that supports ANSI colors
 
 ## Installation
 
-From the directory containing this repository (for local development):
-
-```bash
-git clone https://github.com/leereilly/gh-yule-log
-cd gh-yule-log
-gh extension install .
-```
-
-Or from GitHub:
-
 ```bash
 gh extension install leereilly/gh-yule-log
+```
+
+For local development:
+
+```bash
+git clone leereilly/gh-yule-log
+cd gh-yule-log
+gh extension install .
 ```
 
 ## Usage
