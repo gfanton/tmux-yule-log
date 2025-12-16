@@ -100,7 +100,7 @@ func main() {
 
 	size := width * height
 	buffer := make([]int, size+width+1)
-	
+
 	var chars []rune
 	var styles []tcell.Style
 

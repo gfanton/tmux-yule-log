@@ -54,7 +54,7 @@ func TestParseGitLogToTicker_MultipleCommits(t *testing.T) {
 func TestFlagParsing(t *testing.T) {
 	// Save original command-line args and restore after test.
 	oldArgs := os.Args
-	defer func() { 
+	defer func() {
 		os.Args = oldArgs
 		// Reset flag package state for subsequent tests
 		flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
