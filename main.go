@@ -135,6 +135,15 @@ func main() {
 	tickerOffset := 0
 	frame := 0
 	events := make(chan tcell.Event, 10)
+	heatPower := 65
+	heatSources := width / 9
+	// clamp heat values to reasonable ranges.
+	const (
+		minHeat = 10
+		maxHeat = 85
+		minSources = 1
+	)
+
 	go func() {
 		for {
 			ev := s.PollEvent()
@@ -153,9 +162,29 @@ loop:
 		select {
 		case ev := <-events:
 			switch ev := ev.(type) {
+			// Handle arrow key presses to adjust heat scaling.
 			case *tcell.EventKey:
-				_ = ev // any key exits
-				break loop
+				switch ev.Key() {
+				case tcell.KeyUp:
+					heatPower += 5
+					if heatPower > maxHeat {
+						heatPower = maxHeat
+					}
+					heatSources++
+					if heatSources > width {
+						heatSources = width
+					}
+				case tcell.KeyDown:
+					heatPower -= 5
+					if heatPower < minHeat {
+						heatPower = minHeat
+					}
+					if heatSources > minSources {
+						heatSources--
+					}
+				default:
+					break loop // any other key exits
+				}
 			case *tcell.EventResize:
 				width, height = s.Size()
 				if width <= 0 || height <= 0 {
@@ -165,18 +194,18 @@ loop:
 				buffer = make([]int, size+width+1)
 				msgRow = height - 2
 				metaRow = height - 1
+				heatSources = width / 9
 			}
 		default:
 		}
 
-		// Inject heat on bottom row.
-		for i := 0; i < width/9; i++ {
+		// Inject heat on bottom row to be scaled by arrow keys.
+		for i := 0; i < heatSources; i++ {
 			idx := rand.Intn(width) + width*(height-1)
 			if idx >= 0 && idx < len(buffer) {
-				buffer[idx] = 65
+				buffer[idx] = heatPower
 			}
 		}
-
 		// Propagate and cool.
 		for i := 0; i < size; i++ {
 			b0 := buffer[i]
