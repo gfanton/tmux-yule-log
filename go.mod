@@ -1,4 +1,4 @@
-module gh-yule-log
+module yule-log
 
 go 1.21
 

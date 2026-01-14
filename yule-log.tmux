@@ -47,7 +47,7 @@ check_tmux_version() {
     return 0
 }
 
-# Build Go binaries if needed
+# Build Go binary if needed
 build_binaries() {
     local bin_dir="$CURRENT_DIR/bin"
     mkdir -p "$bin_dir"
@@ -61,13 +61,7 @@ build_binaries() {
     # Build yule-log if not present
     if [ ! -x "$bin_dir/yule-log" ]; then
         echo "Building yule-log..."
-        (cd "$CURRENT_DIR" && go build -o "$bin_dir/yule-log" ./cmd/yule-log) || return 1
-    fi
-
-    # Build yule-log-idle if not present
-    if [ ! -x "$bin_dir/yule-log-idle" ]; then
-        echo "Building yule-log-idle..."
-        (cd "$CURRENT_DIR" && go build -o "$bin_dir/yule-log-idle" ./cmd/yule-log-idle) || return 1
+        (cd "$CURRENT_DIR" && go build -o "$bin_dir/yule-log" .) || return 1
     fi
 
     return 0
@@ -153,7 +147,7 @@ start_idle_watcher() {
     fi
 
     # Build idle watcher command
-    local idle_cmd="$CURRENT_DIR/bin/yule-log-idle --timeout $idle_time"
+    local idle_cmd="$CURRENT_DIR/bin/yule-log idle --timeout $idle_time"
 
     if [ "$(get_mode)" = "contribs" ]; then
         idle_cmd="$idle_cmd --contribs"
