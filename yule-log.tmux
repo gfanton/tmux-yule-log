@@ -9,13 +9,17 @@
 #   set -g @plugin 'gfanton/tmux-yule-log'
 #
 # Configuration options:
-#   set -g @yule-log-idle-time "300"    # seconds before screensaver (0=disabled)
-#   set -g @yule-log-mode "fire"        # "fire" or "contribs"
-#   set -g @yule-log-show-ticker "on"   # show git commits ticker
+#   set -g @yule-log-idle-time "300"       # seconds before screensaver (0=disabled)
+#   set -g @yule-log-mode "fire"           # "fire" or "contribs"
+#   set -g @yule-log-show-ticker "on"      # show git commits ticker
+#   set -g @yule-log-lock-enabled "off"    # enable lock mode (requires password)
+#   set -g @yule-log-lock-timeout "0"      # auto-lock timeout (0=manual only)
+#   set -g @yule-log-lock-socket-protect "on" # restrict socket during lock
 #
 # Usage:
 #   prefix + Y       - trigger screensaver manually
 #   prefix + Alt+Y   - toggle idle watcher on/off
+#   prefix + L       - lock session (if lock enabled)
 #
 
 set -euo pipefail
@@ -80,6 +84,18 @@ get_show_ticker() {
     get_tmux_option "@yule-log-show-ticker" "$default_show_ticker"
 }
 
+get_lock_enabled() {
+    get_tmux_option "@yule-log-lock-enabled" "off"
+}
+
+get_lock_timeout() {
+    get_tmux_option "@yule-log-lock-timeout" "0"
+}
+
+get_lock_socket_protect() {
+    get_tmux_option "@yule-log-lock-socket-protect" "on"
+}
+
 # Build screensaver command with options
 build_screensaver_cmd() {
     local cmd="$CURRENT_DIR/bin/yule-log"
@@ -96,6 +112,49 @@ build_screensaver_cmd() {
     cmd="$cmd --dir \"#{pane_current_path}\""
 
     echo "$cmd"
+}
+
+# Build lock command with options
+build_lock_cmd() {
+    local cmd="$CURRENT_DIR/bin/yule-log lock"
+
+    if [ "$(get_mode)" = "contribs" ]; then
+        cmd="$cmd --contribs"
+    fi
+
+    if [ "$(get_show_ticker)" = "off" ]; then
+        cmd="$cmd --no-ticker"
+    fi
+
+    if [ "$(get_lock_socket_protect)" = "off" ]; then
+        cmd="$cmd --socket-protect=false"
+    fi
+
+    echo "$cmd"
+}
+
+# Check if password is configured
+is_password_configured() {
+    "$CURRENT_DIR/bin/yule-log" lock status 2>&1 | grep -q "Password: configured"
+}
+
+# Lock the session
+lock_session() {
+    if [ "$(get_lock_enabled)" != "on" ]; then
+        tmux display-message "Lock mode is disabled. Set @yule-log-lock-enabled 'on' to enable."
+        return 1
+    fi
+
+    if ! is_password_configured; then
+        tmux display-message "No password configured. Run: $CURRENT_DIR/bin/yule-log lock set-password"
+        return 1
+    fi
+
+    local lock_cmd
+    lock_cmd=$(build_lock_cmd)
+
+    # Use display-popup for the lock screen
+    tmux display-popup -E -w 100% -h 100% "$lock_cmd"
 }
 
 # Check if idle watcher is running
@@ -183,11 +242,17 @@ setup_key_bindings() {
     local cmd
     cmd=$(build_screensaver_cmd)
 
+    local lock_cmd
+    lock_cmd=$(build_lock_cmd)
+
     # Bind prefix + Y to trigger screensaver popup
     tmux bind-key Y display-popup -E -w 100% -h 100% "$cmd"
 
     # Bind prefix + Alt+Y to toggle idle watcher
     tmux bind-key M-Y run-shell "$CURRENT_DIR/yule-log.tmux toggle"
+
+    # Bind prefix + L to lock session (if lock is enabled)
+    tmux bind-key L run-shell "$CURRENT_DIR/yule-log.tmux lock"
 
     # Command aliases (use with prefix + : then type the command)
     # Example: prefix + : then "yule-log" or "yule-stop"
@@ -196,6 +261,8 @@ setup_key_bindings() {
     tmux set -s command-alias[102] "yule-stop=run-shell \"$CURRENT_DIR/yule-log.tmux stop\""
     tmux set -s command-alias[103] "yule-toggle=run-shell \"$CURRENT_DIR/yule-log.tmux toggle\""
     tmux set -s command-alias[104] "yule-status=run-shell \"$CURRENT_DIR/yule-log.tmux status\""
+    tmux set -s command-alias[105] "yule-lock=run-shell \"$CURRENT_DIR/yule-log.tmux lock\""
+    tmux set -s command-alias[106] "yule-set-password=run-shell \"$CURRENT_DIR/bin/yule-log lock set-password\""
 }
 
 # Setup hook to clean up when tmux server exits
@@ -208,7 +275,7 @@ setup_cleanup_hook() {
 }
 
 main() {
-    # Handle command-line arguments for start/stop/toggle/status
+    # Handle command-line arguments for start/stop/toggle/status/lock
     case "${1:-}" in
         start)
             start_idle_watcher
@@ -230,6 +297,10 @@ main() {
             else
                 tmux display-message "Yule log idle watcher is not running"
             fi
+            return
+            ;;
+        lock)
+            lock_session
             return
             ;;
     esac
