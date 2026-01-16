@@ -176,3 +176,23 @@ func (sb *SecureBuffer) Destroy() {
 	sb.Clear()
 	sb.enclave = nil
 }
+
+// VisualLen returns the number of visual characters (arrows count as 1).
+func (sb *SecureBuffer) VisualLen() int {
+	count := 0
+	data := sb.data
+	for len(data) > 0 {
+		if len(data) >= 2 {
+			marker := string(data[:2])
+			if marker == ArrowUpMarker || marker == ArrowDownMarker ||
+				marker == ArrowLeftMarker || marker == ArrowRightMarker {
+				count++
+				data = data[2:]
+				continue
+			}
+		}
+		count++
+		data = data[1:]
+	}
+	return count
+}

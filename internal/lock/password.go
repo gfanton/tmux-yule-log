@@ -125,7 +125,12 @@ func LoadPasswordHash() (string, error) {
 		return "", fmt.Errorf("reading password file: %w", err)
 	}
 
-	return strings.TrimSpace(string(data)), nil
+	hash := strings.TrimSpace(string(data))
+	if hash == "" {
+		return "", ErrInvalidFormat
+	}
+
+	return hash, nil
 }
 
 // PasswordExists checks if a password has been configured.

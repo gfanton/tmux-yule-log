@@ -7,10 +7,10 @@ const (
 	BaseHeatPower = 50
 
 	// BurstHeat is the heat added per keypress.
-	BurstHeat = 15
+	BurstHeat = 12
 
 	// MaxBurstHeat is the maximum burst accumulation.
-	MaxBurstHeat = 40
+	MaxBurstHeat = 150
 
 	// DefaultCooldownRate is the heat decay per frame.
 	DefaultCooldownRate = 2
@@ -87,7 +87,7 @@ func (vs *VisualState) OnKeyPress() {
 	vs.FramesSinceInput = 0
 }
 
-// OnFrame should be called each frame to update cooldown.
+// OnFrame should be called each frame to update cooldown state.
 func (vs *VisualState) OnFrame() {
 	vs.FramesSinceInput++
 
@@ -102,6 +102,11 @@ func (vs *VisualState) OnFrame() {
 // EffectiveHeatPower returns the current heat power for rendering.
 func (vs *VisualState) EffectiveHeatPower() int {
 	return BaseHeatPower + vs.CurrentBurst
+}
+
+// IntensityRatio returns current burst as 0.0-1.0 ratio.
+func (vs *VisualState) IntensityRatio() float64 {
+	return float64(vs.CurrentBurst) / float64(MaxBurstHeat)
 }
 
 // Reset clears the visual state to initial values.

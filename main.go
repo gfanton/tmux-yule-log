@@ -3,9 +3,11 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/subtle"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"math/rand"
 	"os"
 	"os/exec"
@@ -17,6 +19,7 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/peterbourgon/ff/v3/ffcli"
+	"golang.org/x/term"
 
 	"yule-log/internal/fire"
 	"yule-log/internal/lock"
@@ -37,6 +40,14 @@ const (
 	minHeat           = 10
 	maxHeat           = 85
 	minSources        = 1
+
+	// Terminal input byte values
+	byteEscape         = 0x1b
+	byteCtrlC          = 0x03
+	byteBackspace      = 0x7f
+	byteDelete         = 0x08
+	bytePrintableStart = 0x20
+	bytePrintableEnd   = 0x7f
 )
 
 // Mode represents the screensaver operating mode.
@@ -122,6 +133,12 @@ type screensaver struct {
 	// Interactive state (nil in normal mode)
 	visualState *fire.VisualState
 	inputBuffer *lock.SecureBuffer
+
+	// Input timeout (frames since last input, for clearing password)
+	framesSinceInput int
+
+	// Wrong password animation (frames remaining, fades from 1.0 to 0.0)
+	wrongPasswordFrames int
 
 	// Event channel
 	events chan tcell.Event
@@ -247,12 +264,23 @@ func (s *screensaver) handleKeyPlayground(ev *tcell.EventKey) action {
 	return actionNone
 }
 
+// wrongPasswordDuration is frames for wrong password red animation (~2 sec).
+const wrongPasswordDuration = 67 // ~2 sec at 30ms/frame
+
+// inputTimeoutFrames is how long to wait before clearing password input.
+const inputTimeoutFrames = 200 // ~6 seconds at 30ms/frame
+
 func (s *screensaver) handleKeyLock(ev *tcell.EventKey) action {
+	// Reset input timeout on any keypress
+	s.framesSinceInput = 0
 	switch ev.Key() {
 	case tcell.KeyEnter:
 		if s.tryUnlock() {
-			return actionExit
+			return actionExit // Just exit, no flash
 		}
+		// Wrong password - red spike animation
+		s.wrongPasswordFrames = wrongPasswordDuration
+		s.inputBuffer.Clear()
 	case tcell.KeyBackspace, tcell.KeyBackspace2:
 		s.inputBuffer.Backspace()
 	case tcell.KeyUp, tcell.KeyDown, tcell.KeyLeft, tcell.KeyRight:
@@ -332,15 +360,56 @@ func (s *screensaver) updateVisualState() {
 	if s.visualState == nil {
 		return
 	}
+
 	s.visualState.OnFrame()
 	s.heatPower = s.visualState.EffectiveHeatPower()
+
+	// Decrement wrong password animation
+	if s.wrongPasswordFrames > 0 {
+		s.wrongPasswordFrames--
+	}
+
+	// Track input timeout and clear password after timeout
+	if s.cfg.mode == ModeLock && s.inputBuffer != nil && s.inputBuffer.Len() > 0 {
+		s.framesSinceInput++
+		if s.framesSinceInput >= inputTimeoutFrames {
+			s.inputBuffer.Clear()
+			s.framesSinceInput = 0
+		}
+	}
 }
 
 func (s *screensaver) renderFrame() {
 	s.generateHeat()
 	s.renderFire()
+	s.renderPasswordIndicator()
 	s.renderTicker()
 	s.screen.Show()
+}
+
+// renderPasswordIndicator displays asterisks for password input in lock mode.
+func (s *screensaver) renderPasswordIndicator() {
+	if s.cfg.mode != ModeLock || s.inputBuffer == nil {
+		return
+	}
+
+	count := s.inputBuffer.VisualLen()
+	if count == 0 {
+		return
+	}
+
+	// Render at top-left: "> ****"
+	dimStyle := tcell.StyleDefault.Dim(true)
+	col := 0
+	s.screen.SetContent(col, 0, '>', nil, dimStyle)
+	col++
+	s.screen.SetContent(col, 0, ' ', nil, tcell.StyleDefault)
+	col++
+
+	for i := 0; i < count && col < s.width; i++ {
+		s.screen.SetContent(col, 0, '*', nil, dimStyle)
+		col++
+	}
 }
 
 func (s *screensaver) generateHeat() {
@@ -375,7 +444,23 @@ func (s *screensaver) renderFire() {
 	}
 }
 
+// Base RGB colors for fire (matching the theme visually).
+// Using consistent RGB values ensures smooth transitions.
+var fireBaseColors = []struct{ r, g, b uint8 }{
+	{128, 0, 0},     // Maroon (dark, low heat)
+	{200, 50, 0},    // Dark red-orange
+	{255, 100, 0},   // Orange
+	{255, 160, 0},   // Bright orange
+	{255, 200, 50},  // Yellow-orange (high heat)
+}
+
 func (s *screensaver) styleForValue(v int) tcell.Style {
+	// In lock mode, always use RGB-based colors for smooth transitions
+	if s.cfg.mode == ModeLock {
+		return s.lockModeStyle(v)
+	}
+
+	// Standard theme-based coloring for other modes
 	switch {
 	case v > 15:
 		return s.theme.styles[4]
@@ -386,6 +471,47 @@ func (s *screensaver) styleForValue(v int) tcell.Style {
 	default:
 		return s.theme.styles[1]
 	}
+}
+
+// lockModeStyle returns RGB-based style with color derived from cell heat.
+// Both height and color use the same source (cell heat v) so they correlate.
+func (s *screensaver) lockModeStyle(v int) tcell.Style {
+	// Select base color from heat value
+	var r, g, b uint8
+	switch {
+	case v > 15:
+		r, g, b = fireBaseColors[4].r, fireBaseColors[4].g, fireBaseColors[4].b
+	case v > 9:
+		r, g, b = fireBaseColors[3].r, fireBaseColors[3].g, fireBaseColors[3].b
+	case v > 4:
+		r, g, b = fireBaseColors[2].r, fireBaseColors[2].g, fireBaseColors[2].b
+	case v > 1:
+		r, g, b = fireBaseColors[1].r, fireBaseColors[1].g, fireBaseColors[1].b
+	default:
+		r, g, b = fireBaseColors[0].r, fireBaseColors[0].g, fireBaseColors[0].b
+	}
+
+	// Wrong password animation: red shift (takes priority, uses timer)
+	if s.wrongPasswordFrames > 0 {
+		redIntensity := float64(s.wrongPasswordFrames) / float64(wrongPasswordDuration)
+		r, g, b = fire.ApplyRedShift(r, g, b, redIntensity)
+		return tcell.StyleDefault.Foreground(tcell.NewRGBColor(int32(r), int32(g), int32(b)))
+	}
+
+	// Color shift based on CELL HEAT (same source as height)
+	// After heat diffusion, values are lower than heatPower
+	// Map v: 18-38 → intensity: 0-1 for color shift
+	const baseHeat = 18
+	const maxHeat = 38
+	if v > baseHeat {
+		intensity := float64(v-baseHeat) / float64(maxHeat-baseHeat)
+		if intensity > 1 {
+			intensity = 1
+		}
+		r, g, b = fire.ApplyIntensityShift(r, g, b, intensity)
+	}
+
+	return tcell.StyleDefault.Foreground(tcell.NewRGBColor(int32(r), int32(g), int32(b)))
 }
 
 func (s *screensaver) renderTicker() {
@@ -564,7 +690,7 @@ func execSetPassword() error {
 	}
 	defer lock.ClearBytes(confirm)
 
-	if string(password) != string(confirm) {
+	if subtle.ConstantTimeCompare(password, confirm) != 1 {
 		return fmt.Errorf("passwords do not match")
 	}
 
@@ -708,87 +834,141 @@ func padRight(s string, n int) string {
 
 // ---- Password Input
 
+// readPasswordWithArrows reads a password from stdin with arrow key support.
+// Uses POSIX-secure terminal input via golang.org/x/term.
+// Returns the password bytes or nil if cancelled (Escape or Ctrl+C).
 func readPasswordWithArrows() ([]byte, error) {
-	s, err := tcell.NewScreen()
+	fd := int(os.Stdin.Fd())
+	if !term.IsTerminal(fd) {
+		return nil, fmt.Errorf("stdin is not a terminal")
+	}
+
+	// Enter raw mode (disables echo and line buffering)
+	oldState, err := term.MakeRaw(fd)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("entering raw mode: %w", err)
 	}
-	if err := s.Init(); err != nil {
-		return nil, err
-	}
-	defer s.Fini()
 
-	width, height := s.Size()
-	row := height / 2
-	startCol := 2
+	// Ensure terminal is restored on exit
+	defer term.Restore(fd, oldState)
 
-	s.Clear()
-	s.SetContent(0, row, '>', nil, tcell.StyleDefault)
-	s.SetContent(1, row, ' ', nil, tcell.StyleDefault)
-	s.Show()
+	// Handle signals to restore terminal on interrupt
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(sigChan)
+
+	doneChan := make(chan struct{})
+	defer close(doneChan)
+
+	go func() {
+		select {
+		case <-sigChan:
+			term.Restore(fd, oldState)
+			os.Exit(1)
+		case <-doneChan:
+		}
+	}()
 
 	var password []byte
-	col := startCol
+	var displayLen int
+	buf := make([]byte, 16)
+	defer lock.ClearBytes(buf)
 
 	for {
-		ev := s.PollEvent()
-		keyEv, ok := ev.(*tcell.EventKey)
-		if !ok {
-			continue
-		}
-
-		switch keyEv.Key() {
-		case tcell.KeyEnter:
-			return password, nil
-
-		case tcell.KeyEscape:
-			lock.ClearBytes(password)
-			return nil, nil
-
-		case tcell.KeyCtrlC:
-			lock.ClearBytes(password)
-			return nil, fmt.Errorf("interrupted")
-
-		case tcell.KeyBackspace, tcell.KeyBackspace2:
-			if len(password) == 0 {
-				continue
+		n, err := os.Stdin.Read(buf)
+		if err != nil {
+			if err == io.EOF {
+				return password, nil
 			}
-			password, col = handlePasswordBackspace(s, password, col, row)
-
-		case tcell.KeyUp, tcell.KeyDown, tcell.KeyLeft, tcell.KeyRight:
-			password = append(password, lock.ArrowKeyMarker(keyEv.Key())...)
-			arrowRune := lock.ArrowKeyDisplay(keyEv.Key())
-			s.SetContent(col, row, arrowRune, nil, tcell.StyleDefault.Foreground(tcell.ColorYellow))
-			col++
-
-		case tcell.KeyRune:
-			password = append(password, byte(keyEv.Rune()))
-			s.SetContent(col, row, '*', nil, tcell.StyleDefault)
-			col++
+			lock.ClearBytes(password)
+			return nil, fmt.Errorf("reading input: %w", err)
 		}
 
-		col = clamp(col, startCol, width-1)
-		s.Show()
+		for i := 0; i < n; {
+			b := buf[i]
+
+			switch {
+			case b == '\r' || b == '\n': // Enter
+				fmt.Print("\r\n")
+				return password, nil
+
+			case b == byteEscape: // Escape sequence
+				if i+2 < n && buf[i+1] == '[' {
+					// Arrow key: ESC [ A/B/C/D
+					switch buf[i+2] {
+					case 'A': // Up
+						password = append(password, lock.ArrowUpMarker...)
+						fmt.Print("\033[33m↑\033[0m") // Yellow arrow
+						displayLen++
+						i += 3
+						continue
+					case 'B': // Down
+						password = append(password, lock.ArrowDownMarker...)
+						fmt.Print("\033[33m↓\033[0m")
+						displayLen++
+						i += 3
+						continue
+					case 'C': // Right
+						password = append(password, lock.ArrowRightMarker...)
+						fmt.Print("\033[33m→\033[0m")
+						displayLen++
+						i += 3
+						continue
+					case 'D': // Left
+						password = append(password, lock.ArrowLeftMarker...)
+						fmt.Print("\033[33m←\033[0m")
+						displayLen++
+						i += 3
+						continue
+					}
+				}
+				// Plain Escape key - cancel
+				fmt.Print("\r\n")
+				lock.ClearBytes(password)
+				return nil, nil
+
+			case b == byteCtrlC:
+				fmt.Print("\r\n")
+				lock.ClearBytes(password)
+				return nil, fmt.Errorf("interrupted")
+
+			case b == byteBackspace || b == byteDelete:
+				if len(password) > 0 && displayLen > 0 {
+					password = handlePasswordBackspace(password)
+					displayLen--
+					// Erase last character from display
+					fmt.Print("\b \b")
+				}
+
+			case b >= bytePrintableStart && b < bytePrintableEnd: // Printable ASCII
+				password = append(password, b)
+				fmt.Print("*")
+				displayLen++
+
+			default:
+				// Ignore other control characters
+			}
+
+			i++
+		}
 	}
 }
 
-func handlePasswordBackspace(s tcell.Screen, password []byte, col, row int) ([]byte, int) {
+// handlePasswordBackspace removes the last character/marker from password.
+func handlePasswordBackspace(password []byte) []byte {
+	if len(password) == 0 {
+		return password
+	}
+
 	// Handle multi-byte arrow markers
 	if len(password) >= 2 {
 		last2 := string(password[len(password)-2:])
 		if last2 == lock.ArrowUpMarker || last2 == lock.ArrowDownMarker ||
 			last2 == lock.ArrowLeftMarker || last2 == lock.ArrowRightMarker {
-			password = password[:len(password)-2]
-		} else {
-			password = password[:len(password)-1]
+			return password[:len(password)-2]
 		}
-	} else {
-		password = password[:len(password)-1]
 	}
-
-	col--
-	s.SetContent(col, row, ' ', nil, tcell.StyleDefault)
-	return password, col
+	return password[:len(password)-1]
 }
 
 // ---- CLI Setup
