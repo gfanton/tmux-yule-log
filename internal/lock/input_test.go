@@ -1,6 +1,11 @@
 package lock
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
 
 func TestIsArrowMarkerSuffix(t *testing.T) {
 	tests := []struct {
@@ -74,12 +79,8 @@ func TestIsArrowMarkerSuffix(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			gotMatch, gotRemove := IsArrowMarkerSuffix(tt.data)
-			if gotMatch != tt.wantMatch {
-				t.Errorf("IsArrowMarkerSuffix() match = %v, want %v", gotMatch, tt.wantMatch)
-			}
-			if gotRemove != tt.wantRemove {
-				t.Errorf("IsArrowMarkerSuffix() remove = %v, want %v", gotRemove, tt.wantRemove)
-			}
+			assert.Equal(t, tt.wantMatch, gotMatch, "match result")
+			assert.Equal(t, tt.wantRemove, gotRemove, "remove length")
 		})
 	}
 }
@@ -87,12 +88,8 @@ func TestIsArrowMarkerSuffix(t *testing.T) {
 func TestSecureBuffer_Backspace(t *testing.T) {
 	t.Run("backspace on empty buffer", func(t *testing.T) {
 		sb := NewSecureBuffer()
-		if sb.Backspace() {
-			t.Error("Backspace() on empty buffer should return false")
-		}
-		if sb.Len() != 0 {
-			t.Errorf("Len() = %d, want 0", sb.Len())
-		}
+		assert.False(t, sb.Backspace(), "Backspace() on empty buffer should return false")
+		assert.Equal(t, 0, sb.Len())
 	})
 
 	t.Run("backspace after regular char", func(t *testing.T) {
@@ -100,15 +97,9 @@ func TestSecureBuffer_Backspace(t *testing.T) {
 		sb.AppendRune('a')
 		sb.AppendRune('b')
 
-		if !sb.Backspace() {
-			t.Error("Backspace() should return true")
-		}
-		if sb.Len() != 1 {
-			t.Errorf("Len() = %d, want 1", sb.Len())
-		}
-		if string(sb.Bytes()) != "a" {
-			t.Errorf("Bytes() = %q, want %q", sb.Bytes(), "a")
-		}
+		require.True(t, sb.Backspace(), "Backspace() should return true")
+		assert.Equal(t, 1, sb.Len())
+		assert.Equal(t, "a", string(sb.Bytes()))
 	})
 
 	t.Run("backspace after arrow marker", func(t *testing.T) {
@@ -116,52 +107,32 @@ func TestSecureBuffer_Backspace(t *testing.T) {
 		sb.AppendRune('x')
 		sb.AppendString(ArrowUpMarker)
 
-		if !sb.Backspace() {
-			t.Error("Backspace() should return true")
-		}
+		require.True(t, sb.Backspace(), "Backspace() should return true")
 		// Should remove 2 bytes (the arrow marker)
-		if sb.Len() != 1 {
-			t.Errorf("Len() = %d, want 1", sb.Len())
-		}
-		if string(sb.Bytes()) != "x" {
-			t.Errorf("Bytes() = %q, want %q", sb.Bytes(), "x")
-		}
+		assert.Equal(t, 1, sb.Len())
+		assert.Equal(t, "x", string(sb.Bytes()))
 	})
 
 	t.Run("mixed sequence backspace", func(t *testing.T) {
 		sb := NewSecureBuffer()
-		sb.AppendRune('a')               // 1 byte
-		sb.AppendString(ArrowUpMarker)   // 2 bytes
-		sb.AppendRune('b')               // 1 byte
+		sb.AppendRune('a')             // 1 byte
+		sb.AppendString(ArrowUpMarker) // 2 bytes
+		sb.AppendRune('b')             // 1 byte
 
 		// Backspace removes 'b' (1 byte)
-		if !sb.Backspace() {
-			t.Error("Backspace() should return true")
-		}
-		if sb.Len() != 3 { // "a" + ArrowUpMarker
-			t.Errorf("after 1st backspace: Len() = %d, want 3", sb.Len())
-		}
+		require.True(t, sb.Backspace(), "Backspace() should return true")
+		assert.Equal(t, 3, sb.Len(), "after 1st backspace: should be 'a' + ArrowUpMarker")
 
 		// Backspace removes ArrowUpMarker (2 bytes)
-		if !sb.Backspace() {
-			t.Error("Backspace() should return true")
-		}
-		if sb.Len() != 1 { // "a"
-			t.Errorf("after 2nd backspace: Len() = %d, want 1", sb.Len())
-		}
+		require.True(t, sb.Backspace(), "Backspace() should return true")
+		assert.Equal(t, 1, sb.Len(), "after 2nd backspace: should be 'a'")
 
 		// Backspace removes 'a' (1 byte)
-		if !sb.Backspace() {
-			t.Error("Backspace() should return true")
-		}
-		if sb.Len() != 0 {
-			t.Errorf("after 3rd backspace: Len() = %d, want 0", sb.Len())
-		}
+		require.True(t, sb.Backspace(), "Backspace() should return true")
+		assert.Equal(t, 0, sb.Len(), "after 3rd backspace: should be empty")
 
 		// Backspace on empty
-		if sb.Backspace() {
-			t.Error("Backspace() on empty should return false")
-		}
+		assert.False(t, sb.Backspace(), "Backspace() on empty should return false")
 	})
 
 	t.Run("backspace with multiple arrow markers", func(t *testing.T) {
@@ -172,20 +143,14 @@ func TestSecureBuffer_Backspace(t *testing.T) {
 
 		// Remove ArrowRightMarker
 		sb.Backspace()
-		if sb.Len() != 4 {
-			t.Errorf("after 1st backspace: Len() = %d, want 4", sb.Len())
-		}
+		assert.Equal(t, 4, sb.Len(), "after 1st backspace")
 
 		// Remove ArrowLeftMarker
 		sb.Backspace()
-		if sb.Len() != 2 {
-			t.Errorf("after 2nd backspace: Len() = %d, want 2", sb.Len())
-		}
+		assert.Equal(t, 2, sb.Len(), "after 2nd backspace")
 
 		// Remove ArrowDownMarker
 		sb.Backspace()
-		if sb.Len() != 0 {
-			t.Errorf("after 3rd backspace: Len() = %d, want 0", sb.Len())
-		}
+		assert.Equal(t, 0, sb.Len(), "after 3rd backspace")
 	})
 }

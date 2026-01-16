@@ -141,7 +141,8 @@ type screensaver struct {
 	wrongPasswordFrames int
 
 	// Event channel
-	events chan tcell.Event
+	events   chan tcell.Event
+	pollDone chan struct{}
 }
 
 func newScreensaver(cfg screensaverConfig) (*screensaver, error) {
@@ -159,6 +160,7 @@ func newScreensaver(cfg screensaverConfig) (*screensaver, error) {
 		theme:     cfg.theme(),
 		heatPower: defaultHeatPower,
 		events:    make(chan tcell.Event, 10),
+		pollDone:  make(chan struct{}),
 	}
 
 	if cfg.usesVisualState() {
@@ -181,6 +183,12 @@ func (s *screensaver) close() {
 		s.inputBuffer.Destroy()
 	}
 	s.screen.Fini()
+
+	// Wait for pollEvents goroutine to finish
+	select {
+	case <-s.pollDone:
+	case <-time.After(100 * time.Millisecond):
+	}
 }
 
 func (s *screensaver) resize() {
@@ -334,6 +342,7 @@ func (s *screensaver) run() error {
 // pollEvents reads events until the screen is finalized.
 // When screen.Fini() is called (in close()), PollEvent returns nil, ending this goroutine.
 func (s *screensaver) pollEvents() {
+	defer close(s.pollDone)
 	for {
 		ev := s.screen.PollEvent()
 		if ev == nil {
@@ -447,11 +456,11 @@ func (s *screensaver) renderFire() {
 // Base RGB colors for fire (matching the theme visually).
 // Using consistent RGB values ensures smooth transitions.
 var fireBaseColors = []struct{ r, g, b uint8 }{
-	{128, 0, 0},     // Maroon (dark, low heat)
-	{200, 50, 0},    // Dark red-orange
-	{255, 100, 0},   // Orange
-	{255, 160, 0},   // Bright orange
-	{255, 200, 50},  // Yellow-orange (high heat)
+	{128, 0, 0},    // Maroon (dark, low heat)
+	{200, 50, 0},   // Dark red-orange
+	{255, 100, 0},  // Orange
+	{255, 160, 0},  // Bright orange
+	{255, 200, 50}, // Yellow-orange (high heat)
 }
 
 func (s *screensaver) styleForValue(v int) tcell.Style {
@@ -501,10 +510,10 @@ func (s *screensaver) lockModeStyle(v int) tcell.Style {
 	// Color shift based on CELL HEAT (same source as height)
 	// After heat diffusion, values are lower than heatPower
 	// Map v: 18-38 → intensity: 0-1 for color shift
-	const baseHeat = 18
-	const maxHeat = 38
-	if v > baseHeat {
-		intensity := float64(v-baseHeat) / float64(maxHeat-baseHeat)
+	const colorShiftBaseHeat = 18
+	const colorShiftMaxHeat = 38
+	if v > colorShiftBaseHeat {
+		intensity := float64(v-colorShiftBaseHeat) / float64(colorShiftMaxHeat-colorShiftBaseHeat)
 		if intensity > 1 {
 			intensity = 1
 		}
@@ -774,7 +783,13 @@ func triggerScreensaver(ctx context.Context, exePath string, contribs, noTicker 
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
-	_ = cmd.Run() // Ignore error: popup may fail if tmux is unavailable
+
+	// Intentionally ignoring error: tmux display-popup may fail if:
+	// - tmux server is unavailable
+	// - running outside tmux
+	// - popup already active
+	// This is a best-effort trigger from the idle watcher, not critical.
+	_ = cmd.Run()
 }
 
 // ---- Git Ticker

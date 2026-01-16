@@ -77,12 +77,12 @@ func ApplyIntensityShift(r, g, b uint8, intensity float64) (uint8, uint8, uint8)
 		t := (intensity - 0.85) / 0.15
 		// Start from the 0.85 baseline
 		rf = math.Min(255, rf*1.1)
-		gf = gf * 0.95 * 0.4        // Green already reduced
-		bf = math.Min(255, bf+60)   // Blue from magenta stage
+		gf = gf * 0.95 * 0.4      // Green already reduced
+		bf = math.Min(255, bf+60) // Blue from magenta stage
 		// Now shift to blue/white
-		rf = rf * (1 - t*0.4)         // Reduce red
-		gf = math.Min(255, gf+t*80)   // Add green for white/cyan
-		bf = math.Min(255, bf+t*120)  // Boost blue significantly
+		rf = rf * (1 - t*0.4)        // Reduce red
+		gf = math.Min(255, gf+t*80)  // Add green for white/cyan
+		bf = math.Min(255, bf+t*120) // Boost blue significantly
 	}
 
 	// Boost overall brightness at very high intensity for "white hot" look

@@ -3,6 +3,8 @@ package lock
 import (
 	"os"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestGetTmuxSocketPath(t *testing.T) {
@@ -85,14 +87,8 @@ func TestGetTmuxSocketPath(t *testing.T) {
 
 			got, err := GetTmuxSocketPath()
 
-			if err != tt.wantErr {
-				t.Errorf("GetTmuxSocketPath() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-
-			if got != tt.want {
-				t.Errorf("GetTmuxSocketPath() = %q, want %q", got, tt.want)
-			}
+			assert.Equal(t, tt.wantErr, err, "error mismatch")
+			assert.Equal(t, tt.want, got, "path mismatch")
 		})
 	}
 }

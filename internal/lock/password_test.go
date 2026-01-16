@@ -3,6 +3,9 @@ package lock
 import (
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestHashAndVerifyPassword(t *testing.T) {
@@ -35,28 +38,18 @@ func TestHashAndVerifyPassword(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			hash, err := HashPassword([]byte(tt.password))
-			if err != nil {
-				t.Fatalf("HashPassword() error = %v", err)
-			}
+			require.NoError(t, err, "HashPassword()")
 
 			// Verify correct password matches
 			match, err := VerifyPassword([]byte(tt.password), hash)
-			if err != nil {
-				t.Fatalf("VerifyPassword() error = %v", err)
-			}
-			if !match {
-				t.Error("VerifyPassword() should return true for correct password")
-			}
+			require.NoError(t, err, "VerifyPassword()")
+			assert.True(t, match, "VerifyPassword() should return true for correct password")
 
 			// Verify wrong password doesn't match
 			wrongPassword := tt.password + "wrong"
 			match, err = VerifyPassword([]byte(wrongPassword), hash)
-			if err != nil {
-				t.Fatalf("VerifyPassword() with wrong password error = %v", err)
-			}
-			if match {
-				t.Error("VerifyPassword() should return false for wrong password")
-			}
+			require.NoError(t, err, "VerifyPassword() with wrong password")
+			assert.False(t, match, "VerifyPassword() should return false for wrong password")
 		})
 	}
 }
@@ -65,29 +58,19 @@ func TestHashPassword_UniqueHashes(t *testing.T) {
 	password := []byte("samepassword")
 
 	hash1, err := HashPassword(password)
-	if err != nil {
-		t.Fatalf("HashPassword() error = %v", err)
-	}
+	require.NoError(t, err, "HashPassword() first call")
 
 	hash2, err := HashPassword(password)
-	if err != nil {
-		t.Fatalf("HashPassword() error = %v", err)
-	}
+	require.NoError(t, err, "HashPassword() second call")
 
-	if hash1 == hash2 {
-		t.Error("HashPassword() should produce different hashes due to random salt")
-	}
+	assert.NotEqual(t, hash1, hash2, "HashPassword() should produce different hashes due to random salt")
 
 	// Both should still verify correctly
 	match, _ := VerifyPassword(password, hash1)
-	if !match {
-		t.Error("hash1 should verify correctly")
-	}
+	assert.True(t, match, "hash1 should verify correctly")
 
 	match, _ = VerifyPassword(password, hash2)
-	if !match {
-		t.Error("hash2 should verify correctly")
-	}
+	assert.True(t, match, "hash2 should verify correctly")
 }
 
 func TestVerifyPassword_InvalidFormat(t *testing.T) {
@@ -138,8 +121,10 @@ func TestVerifyPassword_InvalidFormat(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := VerifyPassword(password, tt.encoded)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("VerifyPassword() error = %v, wantErr %v", err, tt.wantErr)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
 			}
 		})
 	}
@@ -147,19 +132,13 @@ func TestVerifyPassword_InvalidFormat(t *testing.T) {
 
 func TestHashPassword_Format(t *testing.T) {
 	hash, err := HashPassword([]byte("test"))
-	if err != nil {
-		t.Fatalf("HashPassword() error = %v", err)
-	}
+	require.NoError(t, err, "HashPassword()")
 
 	// Check format: $argon2id$v=19$m=19456,t=2,p=1$<salt>$<hash>
-	if !strings.HasPrefix(hash, "$argon2id$v=19$") {
-		t.Errorf("hash should start with $argon2id$v=19$, got %s", hash)
-	}
+	assert.True(t, strings.HasPrefix(hash, "$argon2id$v=19$"), "hash should start with $argon2id$v=19$")
 
 	parts := strings.Split(hash, "$")
-	if len(parts) != 6 {
-		t.Errorf("hash should have 6 parts separated by $, got %d", len(parts))
-	}
+	require.Len(t, parts, 6, "hash should have 6 parts separated by $")
 
 	// parts[0] is empty (before first $)
 	// parts[1] is "argon2id"
@@ -168,15 +147,7 @@ func TestHashPassword_Format(t *testing.T) {
 	// parts[4] is base64 salt
 	// parts[5] is base64 hash
 
-	if parts[1] != "argon2id" {
-		t.Errorf("algorithm should be argon2id, got %s", parts[1])
-	}
-
-	if parts[2] != "v=19" {
-		t.Errorf("version should be v=19, got %s", parts[2])
-	}
-
-	if parts[3] != "m=19456,t=2,p=1" {
-		t.Errorf("params should be m=19456,t=2,p=1, got %s", parts[3])
-	}
+	assert.Equal(t, "argon2id", parts[1], "algorithm")
+	assert.Equal(t, "v=19", parts[2], "version")
+	assert.Equal(t, "m=19456,t=2,p=1", parts[3], "params")
 }
