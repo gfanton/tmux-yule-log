@@ -88,11 +88,12 @@ var (
 // ---- Screensaver Configuration & State
 
 type screensaverConfig struct {
-	mode     Mode
-	contribs bool
-	gitDir   string
-	noTicker bool
-	cooldown fire.CooldownSpeed
+	mode      Mode
+	contribs  bool
+	gitDir    string
+	noTicker  bool
+	cooldown  fire.CooldownSpeed
+	intensity int
 }
 
 func (c screensaverConfig) theme() theme {
@@ -155,6 +156,9 @@ func newScreensaver(cfg screensaverConfig) (*screensaver, error) {
 	}
 
 	s.visualState = fire.NewVisualStateWithPreset(cfg.cooldown)
+	if cfg.intensity > 0 {
+		s.visualState.SetBaseHeat(cfg.intensity)
+	}
 	s.heatPower = s.visualState.EffectiveHeatPower()
 
 	if cfg.mode == ModeLock {
@@ -1009,6 +1013,7 @@ func buildCLI() *ffcli.Command {
 	runPlayground := runFlagSet.Bool("playground", false, "Playground mode: only ESC exits, all keys affect fire")
 	runCooldown := runFlagSet.String("cooldown", string(fire.DefaultCooldown), "Fire cooldown speed: fast, medium, slow")
 	runLock := runFlagSet.Bool("lock", false, "Lock mode: require password to exit")
+	runIntensity := runFlagSet.Int("intensity", fire.BaseHeatPower, "Base fire intensity (default 75, lower = smaller flames)")
 
 	runCmd := &ffcli.Command{
 		Name:       "run",
@@ -1023,11 +1028,12 @@ func buildCLI() *ffcli.Command {
 				mode = ModePlayground
 			}
 			return execScreensaver(screensaverConfig{
-				mode:     mode,
-				contribs: *runContribs,
-				gitDir:   *runGitDir,
-				noTicker: *runNoTicker,
-				cooldown: fire.CooldownSpeed(*runCooldown),
+				mode:      mode,
+				contribs:  *runContribs,
+				gitDir:    *runGitDir,
+				noTicker:  *runNoTicker,
+				cooldown:  fire.CooldownSpeed(*runCooldown),
+				intensity: *runIntensity,
 			})
 		},
 	}

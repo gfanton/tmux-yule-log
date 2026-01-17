@@ -91,9 +91,6 @@ Add to your `~/.tmux.conf`:
 # Idle timeout in seconds before screensaver activates (0 = disabled)
 set -g @yule-log-idle-time "300"
 
-# Visualization mode: "fire" or "contribs"
-set -g @yule-log-mode "fire"
-
 # Show git commit ticker: "on" or "off"
 set -g @yule-log-show-ticker "on"
 
@@ -133,13 +130,7 @@ This is a convenience lock for casual access protection. It does **not** protect
 
 ## Screenshots
 
-### Fire Mode (default)
-
 ![](images/gh-yule-log-vanilla.gif)
-
-### Contribution Mode (`--contribs`)
-
-![](images/gh-yule-log-contribs.gif)
 
 ## Credits
 
