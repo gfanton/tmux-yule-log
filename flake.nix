@@ -23,7 +23,7 @@
           version = "0.1.0";
           src = ./.;
 
-          vendorHash = null; # Use committed vendor directory
+          vendorHash = "sha256-Fdnu2rnD604aNMpgpkIH9tCV4iCZRWA+gFUXkPDvEoc=";
 
           nativeBuildInputs = [ pkgs.makeWrapper ];
 

@@ -43,9 +43,10 @@ check_tmux_version() {
     local major minor
     major=$(echo "$version" | cut -d. -f1)
     minor=$(echo "$version" | cut -d. -f2)
+    minor="${minor:-0}"  # Default to 0 if empty
 
-    if [ "$major" -lt 3 ] || { [ "$major" -eq 3 ] && [ "$minor" -lt 2 ]; }; then
-        echo "Warning: tmux 3.2+ required for yule-log popup support"
+    if (( major < 3 || (major == 3 && minor < 2) )); then
+        echo "Warning: tmux 3.2+ required for yule-log popup support" >&2
         return 1
     fi
     return 0
@@ -56,7 +57,7 @@ get_binary() {
     local bin_dir="$CURRENT_DIR/bin"
 
     # Check local bin/ first (for nix plugin users)
-    if [ -x "$bin_dir/yule-log" ]; then
+    if [[ -x "$bin_dir/yule-log" ]]; then
         echo "$bin_dir/yule-log"
         return 0
     fi
@@ -109,11 +110,11 @@ get_lock_socket_protect() {
 build_screensaver_cmd() {
     local cmd="$YULE_LOG_BIN run"
 
-    if [ "$(get_mode)" = "contribs" ]; then
+    if [[ "$(get_mode)" == "contribs" ]]; then
         cmd="$cmd --contribs"
     fi
 
-    if [ "$(get_show_ticker)" = "off" ]; then
+    if [[ "$(get_show_ticker)" == "off" ]]; then
         cmd="$cmd --no-ticker"
     fi
 
@@ -127,15 +128,15 @@ build_screensaver_cmd() {
 build_lock_cmd() {
     local cmd="$YULE_LOG_BIN lock"
 
-    if [ "$(get_mode)" = "contribs" ]; then
+    if [[ "$(get_mode)" == "contribs" ]]; then
         cmd="$cmd --contribs"
     fi
 
-    if [ "$(get_show_ticker)" = "off" ]; then
+    if [[ "$(get_show_ticker)" == "off" ]]; then
         cmd="$cmd --no-ticker"
     fi
 
-    if [ "$(get_lock_socket_protect)" = "off" ]; then
+    if [[ "$(get_lock_socket_protect)" == "off" ]]; then
         cmd="$cmd --socket-protect=false"
     fi
 
@@ -149,7 +150,7 @@ is_password_configured() {
 
 # Lock the session
 lock_session() {
-    if [ "$(get_lock_enabled)" != "on" ]; then
+    if [[ "$(get_lock_enabled)" != "on" ]]; then
         tmux display-message "Lock mode is disabled. Set @yule-log-lock-enabled 'on' to enable."
         return 1
     fi
@@ -171,10 +172,10 @@ is_watcher_running() {
     local pid_file
     pid_file=$(get_pid_file)
 
-    if [ -f "$pid_file" ]; then
+    if [[ -f "$pid_file" ]]; then
         local pid
-        pid=$(cat "$pid_file")
-        if kill -0 "$pid" 2>/dev/null; then
+        pid=$(<"$pid_file")
+        if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
             return 0
         fi
         # Stale PID file, remove it
@@ -190,12 +191,12 @@ stop_idle_watcher() {
     local pid_file
     pid_file=$(get_pid_file)
 
-    if [ -f "$pid_file" ]; then
+    if [[ -f "$pid_file" ]]; then
         local pid
-        pid=$(cat "$pid_file")
-        if kill -0 "$pid" 2>/dev/null; then
+        pid=$(<"$pid_file")
+        if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
             kill "$pid" 2>/dev/null || true
-            if [ "$quiet" != "quiet" ]; then
+            if [[ "$quiet" != "quiet" ]]; then
                 tmux display-message "Yule log idle watcher stopped (pid: $pid)"
             fi
         fi
@@ -209,44 +210,50 @@ start_idle_watcher() {
     idle_time=$(get_idle_time)
 
     # If idle time is 0 or empty, don't start the watcher
-    if [ -z "$idle_time" ] || [ "$idle_time" = "0" ]; then
+    if [[ -z "$idle_time" ]] || [[ "$idle_time" == "0" ]]; then
         return 0
     fi
 
-    # Check if already running
-    if is_watcher_running; then
-        return 0
-    fi
-
-    # Build idle watcher command
-    local idle_cmd="$YULE_LOG_BIN idle --timeout $idle_time"
-
-    if [ "$(get_mode)" = "contribs" ]; then
-        idle_cmd="$idle_cmd --contribs"
-    fi
-
-    if [ "$(get_show_ticker)" = "off" ]; then
-        idle_cmd="$idle_cmd --no-ticker"
-    fi
-
-    # Add lock mode if enabled and password is configured
-    if [ "$(get_lock_enabled)" = "on" ] && is_password_configured; then
-        idle_cmd="$idle_cmd --lock"
-        if [ "$(get_lock_socket_protect)" = "off" ]; then
-            idle_cmd="$idle_cmd --socket-protect=false"
-        fi
-    fi
-
-    # Start the idle watcher in background
-    nohup $idle_cmd >/dev/null 2>&1 &
-    local pid=$!
-
-    # Save PID to file
     local pid_file
     pid_file=$(get_pid_file)
-    echo "$pid" > "$pid_file"
 
-    tmux display-message "Yule log idle watcher started (timeout: ${idle_time}s, pid: $pid)"
+    # Use flock to prevent race conditions when starting watcher
+    (
+        flock -n 9 || return 0  # Another instance is handling this
+
+        # Re-check inside lock
+        if is_watcher_running; then
+            return 0
+        fi
+
+        # Build idle watcher command as array (handles paths with spaces)
+        local -a idle_args=("$YULE_LOG_BIN" idle --timeout "$idle_time")
+
+        if [[ "$(get_mode)" == "contribs" ]]; then
+            idle_args+=(--contribs)
+        fi
+
+        if [[ "$(get_show_ticker)" == "off" ]]; then
+            idle_args+=(--no-ticker)
+        fi
+
+        # Add lock mode if enabled and password is configured
+        if [[ "$(get_lock_enabled)" == "on" ]] && is_password_configured; then
+            idle_args+=(--lock)
+            if [[ "$(get_lock_socket_protect)" == "off" ]]; then
+                idle_args+=(--socket-protect=false)
+            fi
+        fi
+
+        # Start the idle watcher in background
+        nohup "${idle_args[@]}" >/dev/null 2>&1 &
+        local pid=$!
+
+        # Save PID to file
+        echo "$pid" > "$pid_file"
+
+        tmux display-message "Yule log idle watcher started (timeout: ${idle_time}s, pid: $pid)"
+    ) 9>"${pid_file}.lock"
 }
 
 # Toggle idle watcher on/off
@@ -304,7 +311,7 @@ main() {
     # Handle command-line arguments for start/stop/toggle/status/lock
     case "${1:-}" in
         start)
-            if [ -z "$YULE_LOG_BIN" ]; then
+            if [[ -z "$YULE_LOG_BIN" ]]; then
                 tmux display-message "yule-log binary not found. Install via: go install or nix"
                 return 1
             fi
@@ -316,7 +323,7 @@ main() {
             return
             ;;
         toggle)
-            if [ -z "$YULE_LOG_BIN" ]; then
+            if [[ -z "$YULE_LOG_BIN" ]]; then
                 tmux display-message "yule-log binary not found. Install via: go install or nix"
                 return 1
             fi
@@ -327,14 +334,14 @@ main() {
             if is_watcher_running; then
                 local pid_file
                 pid_file=$(get_pid_file)
-                tmux display-message "Yule log idle watcher is running (pid: $(cat "$pid_file"))"
+                tmux display-message "Yule log idle watcher is running (pid: $(<"$pid_file"))"
             else
                 tmux display-message "Yule log idle watcher is not running"
             fi
             return
             ;;
         lock)
-            if [ -z "$YULE_LOG_BIN" ]; then
+            if [[ -z "$YULE_LOG_BIN" ]]; then
                 tmux display-message "yule-log binary not found. Install via: go install or nix"
                 return 1
             fi
@@ -349,7 +356,7 @@ main() {
     fi
 
     # Verify binary is found for plugin initialization
-    if [ -z "$YULE_LOG_BIN" ]; then
+    if [[ -z "$YULE_LOG_BIN" ]]; then
         tmux display-message "yule-log binary not found. Install via: go install github.com/gfanton/tmux-yule-log@latest or nix profile install github:gfanton/tmux-yule-log#yule-log"
         return 1
     fi

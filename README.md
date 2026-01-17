@@ -97,98 +97,39 @@ set -g @yule-log-mode "fire"
 # Show git commit ticker: "on" or "off"
 set -g @yule-log-show-ticker "on"
 
-# Lock mode (see Security Considerations below)
+# Lock mode
 set -g @yule-log-lock-enabled "off"        # Enable lock feature
 set -g @yule-log-lock-socket-protect "on"  # Restrict socket during lock
 ```
 
 ## Session Locking
 
-The lock feature provides password-protected session locking with visual feedback through the fire animation.
+Password-protected session locking.
 
 ### Setup
 
-1. **Set a password** (supports regular characters and arrow keys):
-   ```bash
-   ./bin/yule-log lock set-password
+1. **Set a password** (from tmux):
    ```
+   prefix + :yule-set-password
+   ```
+   Supports regular characters and arrow keys for extra complexity.
 
-2. **Enable lock mode** in your `~/.tmux.conf`:
+2. **Enable lock mode** in `~/.tmux.conf`:
    ```bash
    set -g @yule-log-lock-enabled "on"
    ```
 
 3. **Lock your session** with `prefix + L` or `:yule-lock`
 
-### Security Considerations
+### Features
 
-**Important:** Before enabling session locking, understand its limitations.
+- **Argon2id hashing** with OWASP-recommended parameters
+- **Socket protection** prevents `tmux attach` bypass during lock
+- **Secure memory** - password input uses memguard (mlocked, wiped)
 
-#### What Lock Mode Protects Against
+### Limitations
 
-- **Casual access**: Prevents opportunistic use of an unattended terminal
-- **Accidental input**: Blocks inadvertent commands from passersby
-- **Basic bypass attempts**: Socket permission restriction prevents simple `tmux attach`
-
-#### What Lock Mode Does NOT Protect Against
-
-| Threat | Why It Cannot Be Mitigated |
-|--------|---------------------------|
-| **SIGKILL / SIGSTOP** | Kernel-level signals cannot be blocked by any userspace process |
-| **Root access** | A root user can always bypass any lock mechanism |
-| **`tmux kill-session`** | Cannot prevent session destruction (though socket protection helps) |
-| **Physical access + time** | Extended physical access defeats most software protections |
-| **Memory forensics** | While memguard helps, determined attackers with root can dump memory |
-
-#### Race Condition Window
-
-There is a brief window between a new client attaching and the lock hook executing. Socket permission protection (`@yule-log-lock-socket-protect "on"`) significantly narrows this window by preventing new connections entirely during lock.
-
-#### Password Security
-
-- Passwords are hashed using **Argon2id** (OWASP 2025 recommended parameters)
-- Password input uses **memguard** for secure memory handling (mlock, secure wipe)
-- Constant-time comparison prevents timing attacks
-- Password hash stored in `~/.config/tmux-yule-log/passwd` (mode 0600)
-
-#### Recommendations
-
-1. **Don't rely on this as your only security measure** - use it as one layer in defense-in-depth
-2. **Keep socket protection enabled** - it's the primary defense against `tmux attach` bypass
-3. **Use a strong password** - arrow keys can be included for additional complexity
-4. **Consider your threat model** - this protects against casual access, not determined attackers
-5. **Lock your screen too** - combine with OS-level screen lock for better security
-
-### Command-Line Options
-
-When running the binary directly:
-
-**Screensaver (`yule-log run`):**
-
-| Flag | Description |
-|------|-------------|
-| `--contribs` | Use GitHub contribution graph-style green visualization |
-| `--dir PATH` | Git directory for commit ticker (default: current pane path) |
-| `--no-ticker` | Disable git commit ticker (fire animation only) |
-| `--intensity` | Default fire intensity: 10-85 (default: 75) |
-| `--playground` | Playground mode: only ESC exits, all keys affect fire |
-| `--cooldown` | Fire cooldown speed: `fast`, `medium`, `slow` |
-| `--lock` | Lock mode: require password to exit |
-
-**Lock (`yule-log lock`):**
-
-| Subcommand | Description |
-|------------|-------------|
-| `set-password` | Set or update the lock password |
-| `status` | Show lock and password status |
-
-| Flag | Description |
-|------|-------------|
-| `--socket-protect` | Restrict tmux socket permissions during lock (default: true) |
-| `--contribs` | Use contribution graph visualization |
-| `--no-ticker` | Disable git commit ticker |
-| `--intensity` | Default fire intensity: 10-85 (default: 75) |
-| `--cooldown` | Fire cooldown speed |
+This is a convenience lock for casual access protection. It does **not** protect against root users, SIGKILL, or physical attacks. Combine with OS screen lock for real security.
 
 ## Screenshots
 
