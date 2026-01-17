@@ -17,7 +17,7 @@ GOFLAGS ?=
 
 # ---- Targets
 
-.PHONY: all build run test clean fmt vet lint tidy install help
+.PHONY: all build run test clean fmt vet lint tidy install gifs help
 
 all: build
 
@@ -36,10 +36,6 @@ fmt: ## Format all Go source files
 vet: ## Run go vet
 	$(GO) vet ./...
 
-lint: ## Run golangci-lint (if available)
-	@command -v golangci-lint >/dev/null 2>&1 || { echo "golangci-lint not installed"; exit 1; }
-	golangci-lint run
-
 tidy: ## Run go mod tidy
 	$(GO) mod tidy
 
@@ -48,6 +44,9 @@ install: ## Install binary to GOPATH/bin
 
 clean: ## Remove build artifacts
 	rm -rf $(BINDIR)
+
+gifs: ## Generate GIFs using VHS (requires nix)
+	nix run .#generate-gifs .
 
 help: ## Display this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \

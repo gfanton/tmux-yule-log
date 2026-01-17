@@ -1,13 +1,13 @@
-# VHS documentation: https://github.com/charmbracelet/vhs 
+# VHS documentation: https://github.com/charmbracelet/vhs
 
 Output ../images/gh-yule-log-vanilla.gif
 
 Set Shell "bash"
-Set FontSize 24
+Set FontSize 16
 Set Width 960
-Set Height 480
+Set Height 600
 
-Type "gh yule-log" 
-Sleep 200ms 
+Type "yule-log run"
+Sleep 200ms
 Enter
 Sleep 10s

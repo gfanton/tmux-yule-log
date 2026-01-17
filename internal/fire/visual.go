@@ -4,7 +4,7 @@ package fire
 
 const (
 	// BaseHeatPower is the resting fire intensity.
-	BaseHeatPower = 75
+	BaseHeatPower = 60
 
 	// BurstHeat is the heat added per keypress.
 	BurstHeat = 12
@@ -57,6 +57,9 @@ type VisualState struct {
 
 	// CooldownDelay is frames before cooldown starts.
 	CooldownDelay int
+
+	// BaseHeat is the resting fire intensity (defaults to BaseHeatPower).
+	BaseHeat int
 }
 
 // NewVisualState creates a new visual state with default parameters.
@@ -64,6 +67,7 @@ func NewVisualState() *VisualState {
 	return &VisualState{
 		CooldownRate:  DefaultCooldownRate,
 		CooldownDelay: DefaultCooldownDelay,
+		BaseHeat:      BaseHeatPower,
 	}
 }
 
@@ -101,7 +105,12 @@ func (vs *VisualState) OnFrame() {
 
 // EffectiveHeatPower returns the current heat power for rendering.
 func (vs *VisualState) EffectiveHeatPower() int {
-	return BaseHeatPower + vs.CurrentBurst
+	return vs.BaseHeat + vs.CurrentBurst
+}
+
+// SetBaseHeat sets a custom base heat intensity.
+func (vs *VisualState) SetBaseHeat(heat int) {
+	vs.BaseHeat = heat
 }
 
 // IntensityRatio returns current burst as 0.0-1.0 ratio.

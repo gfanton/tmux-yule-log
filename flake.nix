@@ -75,11 +75,62 @@
             platforms = platforms.unix;
           };
         };
+
+        # Script to run VHS on tape files with yule-log in PATH
+        # Note: tape files use "go run . run" so they need go in PATH.
+        # yule-log binary is also available for tape files that use it directly.
+        generate-gifs = pkgs.writeShellScriptBin "generate-gifs" ''
+          set -e
+          export PATH="${pkgs.lib.makeBinPath [ yule-log pkgs.go pkgs.git ]}:$PATH"
+
+          # Default to current directory if no argument provided
+          PROJECT_DIR="''${1:-.}"
+          SCRIPTS_DIR="$PROJECT_DIR/scripts"
+
+          if [ ! -d "$SCRIPTS_DIR" ]; then
+            echo "Error: scripts directory not found at $SCRIPTS_DIR"
+            echo "Usage: generate-gifs [project-dir]"
+            exit 1
+          fi
+
+          cd "$SCRIPTS_DIR"
+
+          echo "Generating GIFs from tape files..."
+          echo "yule-log binary: $(which yule-log)"
+          for tape in generate-gif-*.tape; do
+            if [ -f "$tape" ]; then
+              echo "Processing $tape..."
+              ${pkgs.vhs}/bin/vhs "$tape"
+            fi
+          done
+          echo "Done!"
+        '';
       in
       {
         packages = {
           default = plugin;
-          inherit yule-log plugin;
+          inherit yule-log plugin generate-gifs;
+        };
+
+        apps.generate-gifs = {
+          type = "app";
+          program = "${generate-gifs}/bin/generate-gifs";
+        };
+
+        devShells.default = pkgs.mkShell {
+          buildInputs = [
+            pkgs.go
+            pkgs.git
+            pkgs.tmux
+            pkgs.vhs
+            yule-log
+          ];
+
+          shellHook = ''
+            echo "yule-log dev shell"
+            echo "  - yule-log binary is in PATH"
+            echo "  - Run 'nix run .#generate-gifs' to generate GIFs"
+          '';
         };
       }
     )
