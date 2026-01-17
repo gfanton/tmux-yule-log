@@ -184,7 +184,9 @@ is_watcher_running() {
 }
 
 # Stop the idle watcher
+# Args: $1 = "quiet" to suppress message
 stop_idle_watcher() {
+    local quiet="${1:-}"
     local pid_file
     pid_file=$(get_pid_file)
 
@@ -193,7 +195,9 @@ stop_idle_watcher() {
         pid=$(cat "$pid_file")
         if kill -0 "$pid" 2>/dev/null; then
             kill "$pid" 2>/dev/null || true
-            tmux display-message "Yule log idle watcher stopped (pid: $pid)"
+            if [ "$quiet" != "quiet" ]; then
+                tmux display-message "Yule log idle watcher stopped (pid: $pid)"
+            fi
         fi
         rm -f "$pid_file"
     fi
@@ -356,7 +360,8 @@ main() {
     # Setup cleanup hook
     setup_cleanup_hook
 
-    # Start idle watcher if @yule-log-idle-time is set
+    # Stop any existing watcher and start fresh (in case config changed)
+    stop_idle_watcher quiet
     start_idle_watcher
 }
 
