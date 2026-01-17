@@ -11,7 +11,7 @@ get_tmux_option() {
 
     option_value=$(tmux show-option -gqv "$option" 2>/dev/null)
 
-    if [ -z "$option_value" ]; then
+    if [[ -z "$option_value" ]]; then
         echo "$default_value"
     else
         echo "$option_value"
@@ -32,5 +32,5 @@ current_tmux_server_pid() {
 
 # Check if running inside tmux
 is_inside_tmux() {
-    [ -n "${TMUX:-}" ]
+    [[ -n "${TMUX:-}" ]]
 }

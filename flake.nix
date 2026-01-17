@@ -23,7 +23,7 @@
           version = "0.1.0";
           src = ./.;
 
-          vendorHash = "sha256-8UprJXRLFO3giWAm8k+vbNz7HPYwKW7cD36qc3hEkzE=";
+          vendorHash = "sha256-Fdnu2rnD604aNMpgpkIH9tCV4iCZRWA+gFUXkPDvEoc=";
 
           nativeBuildInputs = [ pkgs.makeWrapper ];
 
@@ -52,6 +52,7 @@
           postInstall = ''
             # Link binary into plugin's bin/ directory
             mkdir -p $out/share/tmux-plugins/tmux-yule-log/bin
+            rm -f $out/share/tmux-plugins/tmux-yule-log/bin/yule-log
             ln -s ${yule-log}/bin/yule-log $out/share/tmux-plugins/tmux-yule-log/bin/yule-log
 
             # Make scripts executable and wrap with dependencies

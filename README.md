@@ -9,7 +9,7 @@ A tmux screensaver plugin that turns your terminal into a festive, animated Yule
 ## Requirements
 
 - tmux 3.2+ (for popup and command-alias support)
-- Go 1.18+ (for building from source)
+- Go 1.24+ (for building from source, or use nix/pre-built binary)
 - A modern terminal that supports ANSI colors
 
 ## Installation
@@ -25,21 +25,28 @@ set -g @plugin 'gfanton/tmux-yule-log'
 set -g @yule-log-idle-time "300"
 ```
 
-Then press `prefix + I` to install.
+Then press `prefix + I` to install. The binary will be built automatically if Go is available.
+
+### Using Nix
+
+```bash
+# Install full tmux plugin (includes binary)
+nix profile install github:gfanton/tmux-yule-log
+
+# Or just the binary
+nix profile install github:gfanton/tmux-yule-log#yule-log
+```
 
 ### Manual Installation
 
 ```bash
-git clone https://github.com/gfanton/tmux-yule-log
-cd tmux-yule-log
-go build -o bin/yule-log ./cmd/yule-log
-go build -o bin/yule-log-idle ./cmd/yule-log-idle
+git clone https://github.com/gfanton/tmux-yule-log ~/.tmux/plugins/tmux-yule-log
 ```
 
 Then source the plugin in your `~/.tmux.conf`:
 
 ```bash
-run-shell /path/to/tmux-yule-log/yule-log.tmux
+run-shell ~/.tmux/plugins/tmux-yule-log/yule-log.tmux
 ```
 
 ## Usage
@@ -50,6 +57,7 @@ run-shell /path/to/tmux-yule-log/yule-log.tmux
 |-----|--------|
 | `prefix + Y` | Trigger screensaver |
 | `prefix + Alt+Y` | Toggle idle watcher on/off |
+| `prefix + L` | Lock session (if lock enabled) |
 
 ### tmux Commands
 
@@ -62,6 +70,8 @@ Press `prefix + :` then type any of these commands (tab-completion works):
 | `:yule-stop` | Stop idle watcher |
 | `:yule-toggle` | Toggle idle watcher on/off |
 | `:yule-status` | Check if idle watcher is running |
+| `:yule-lock` | Lock the session |
+| `:yule-set-password` | Set lock password |
 
 ### Screensaver Controls
 
@@ -86,17 +96,40 @@ set -g @yule-log-mode "fire"
 
 # Show git commit ticker: "on" or "off"
 set -g @yule-log-show-ticker "on"
+
+# Lock mode
+set -g @yule-log-lock-enabled "off"        # Enable lock feature
+set -g @yule-log-lock-socket-protect "on"  # Restrict socket during lock
 ```
 
-### Command-Line Options
+## Session Locking
 
-When running the binary directly:
+Password-protected session locking.
 
-| Flag | Description |
-|------|-------------|
-| `--contribs` | Use GitHub contribution graph-style green visualization |
-| `--dir PATH` | Git directory for commit ticker (default: current pane path) |
-| `--no-ticker` | Disable git commit ticker (fire animation only) |
+### Setup
+
+1. **Set a password** (from tmux):
+   ```
+   prefix + :yule-set-password
+   ```
+   Supports regular characters and arrow keys for extra complexity.
+
+2. **Enable lock mode** in `~/.tmux.conf`:
+   ```bash
+   set -g @yule-log-lock-enabled "on"
+   ```
+
+3. **Lock your session** with `prefix + L` or `:yule-lock`
+
+### Features
+
+- **Argon2id hashing** with OWASP-recommended parameters
+- **Socket protection** prevents `tmux attach` bypass during lock
+- **Secure memory** - password input uses memguard (mlocked, wiped)
+
+### Limitations
+
+This is a convenience lock for casual access protection. It does **not** protect against root users, SIGKILL, or physical attacks. Combine with OS screen lock for real security.
 
 ## Screenshots
 
