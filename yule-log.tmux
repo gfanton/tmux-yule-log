@@ -55,15 +55,15 @@ check_tmux_version() {
 get_binary() {
     local bin_dir="$CURRENT_DIR/bin"
 
-    # Check PATH first (for nix/go install users)
-    if command -v yule-log >/dev/null 2>&1; then
-        command -v yule-log
+    # Check local bin/ first (for nix plugin users)
+    if [ -x "$bin_dir/yule-log" ]; then
+        echo "$bin_dir/yule-log"
         return 0
     fi
 
-    # Check local bin/
-    if [ -x "$bin_dir/yule-log" ]; then
-        echo "$bin_dir/yule-log"
+    # Check PATH as fallback (for go install users)
+    if command -v yule-log >/dev/null 2>&1; then
+        command -v yule-log
         return 0
     fi
 
@@ -223,6 +223,14 @@ start_idle_watcher() {
 
     if [ "$(get_show_ticker)" = "off" ]; then
         idle_cmd="$idle_cmd --no-ticker"
+    fi
+
+    # Add lock mode if enabled and password is configured
+    if [ "$(get_lock_enabled)" = "on" ] && is_password_configured; then
+        idle_cmd="$idle_cmd --lock"
+        if [ "$(get_lock_socket_protect)" = "off" ]; then
+            idle_cmd="$idle_cmd --socket-protect=false"
+        fi
     fi
 
     # Start the idle watcher in background

@@ -527,10 +527,12 @@ func execScreensaver(cfg screensaverConfig) error {
 }
 
 type idleConfig struct {
-	Timeout  int
-	Once     bool
-	Contribs bool
-	NoTicker bool
+	Timeout       int
+	Once          bool
+	Contribs      bool
+	NoTicker      bool
+	Lock          bool
+	SocketProtect bool
 }
 
 func execIdle(cfg idleConfig) error {
@@ -541,8 +543,10 @@ func execIdle(cfg idleConfig) error {
 
 	if cfg.Once {
 		triggerScreensaver(context.Background(), exePath, triggerConfig{
-			Contribs: cfg.Contribs,
-			NoTicker: cfg.NoTicker,
+			Contribs:      cfg.Contribs,
+			NoTicker:      cfg.NoTicker,
+			Lock:          cfg.Lock,
+			SocketProtect: cfg.SocketProtect,
 		})
 		return nil
 	}
@@ -581,8 +585,10 @@ func execIdle(cfg idleConfig) error {
 
 			if idleSeconds >= cfg.Timeout {
 				triggerScreensaver(ctx, exePath, triggerConfig{
-					Contribs: cfg.Contribs,
-					NoTicker: cfg.NoTicker,
+					Contribs:      cfg.Contribs,
+					NoTicker:      cfg.NoTicker,
+					Lock:          cfg.Lock,
+					SocketProtect: cfg.SocketProtect,
 				})
 				waitingForActivity = true
 			}
@@ -737,12 +743,23 @@ func getClientIdleTime(ctx context.Context) (int, error) {
 }
 
 type triggerConfig struct {
-	Contribs bool
-	NoTicker bool
+	Contribs      bool
+	NoTicker      bool
+	Lock          bool
+	SocketProtect bool
 }
 
 func triggerScreensaver(ctx context.Context, exePath string, cfg triggerConfig) {
-	args := []string{exePath, "run"}
+	var args []string
+	if cfg.Lock {
+		args = []string{exePath, "lock"}
+		if !cfg.SocketProtect {
+			args = append(args, "--socket-protect=false")
+		}
+	} else {
+		args = []string{exePath, "run"}
+	}
+
 	if cfg.Contribs {
 		args = append(args, "--contribs")
 	}
@@ -750,10 +767,12 @@ func triggerScreensaver(ctx context.Context, exePath string, cfg triggerConfig) 
 		args = append(args, "--no-ticker")
 	}
 
-	panePathCmd := exec.CommandContext(ctx, "tmux", "display-message", "-p", "#{pane_current_path}")
-	if panePathOut, _ := panePathCmd.Output(); len(panePathOut) > 0 {
-		if panePath := strings.TrimSpace(string(panePathOut)); panePath != "" {
-			args = append(args, "--dir", panePath)
+	if !cfg.Lock {
+		panePathCmd := exec.CommandContext(ctx, "tmux", "display-message", "-p", "#{pane_current_path}")
+		if panePathOut, _ := panePathCmd.Output(); len(panePathOut) > 0 {
+			if panePath := strings.TrimSpace(string(panePathOut)); panePath != "" {
+				args = append(args, "--dir", panePath)
+			}
 		}
 	}
 
@@ -1019,6 +1038,8 @@ func buildCLI() *ffcli.Command {
 	idleOnce := idleFlagSet.Bool("once", false, "Trigger screensaver immediately and exit")
 	idleContribs := idleFlagSet.Bool("contribs", false, "Use GitHub contribution graph-style visualization")
 	idleNoTicker := idleFlagSet.Bool("no-ticker", false, "Disable git commit ticker")
+	idleLock := idleFlagSet.Bool("lock", false, "Trigger lock screen instead of screensaver on idle")
+	idleSocketProtect := idleFlagSet.Bool("socket-protect", true, "Restrict tmux socket permissions during lock")
 
 	idleCmd := &ffcli.Command{
 		Name:       "idle",
@@ -1027,10 +1048,12 @@ func buildCLI() *ffcli.Command {
 		FlagSet:    idleFlagSet,
 		Exec: func(_ context.Context, _ []string) error {
 			return execIdle(idleConfig{
-				Timeout:  *idleTimeout,
-				Once:     *idleOnce,
-				Contribs: *idleContribs,
-				NoTicker: *idleNoTicker,
+				Timeout:       *idleTimeout,
+				Once:          *idleOnce,
+				Contribs:      *idleContribs,
+				NoTicker:      *idleNoTicker,
+				Lock:          *idleLock,
+				SocketProtect: *idleSocketProtect,
 			})
 		},
 	}
